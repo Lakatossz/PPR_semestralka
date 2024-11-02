@@ -1,0 +1,154 @@
+#include "../include/sort.h"
+
+// Function to perform a bitonic sort on a vector of four double values
+void bitonic_sort(__m256d& vec) {
+    // Create an array to hold the sorted results temporarily
+    double temp[4];
+    
+    // Store the vector in an array
+    _mm256_storeu_pd(temp, vec);
+    
+    // Compare and swap
+    // 1. Sort the first half in ascending order and the second half in descending order
+    if (temp[0] > temp[1]) std::swap(temp[0], temp[1]);
+    if (temp[2] > temp[3]) std::swap(temp[2], temp[3]);
+    if (temp[0] > temp[2]) std::swap(temp[0], temp[2]);
+    if (temp[1] > temp[3]) std::swap(temp[1], temp[3]);
+    if (temp[1] > temp[2]) std::swap(temp[1], temp[2]);
+
+    // Load the sorted values back into the vector
+    vec = _mm256_loadu_pd(temp);
+}
+
+void sort(std::vector<double> data, size_t size_) {
+    size_t size = data.size();
+    
+    // Sort each chunk of 4 doubles
+    for (size_t i = 0; i < size / 4 * 4; i += 4) {
+        __m256d vec = _mm256_loadu_pd(&data[i]);
+        bitonic_sort(vec);
+        _mm256_storeu_pd(&data[i], vec);
+    }
+
+    // Handle remaining elements if size is not a multiple of 4
+    for (size_t i = (size / 4) * 4; i < size; ++i) {
+        for (size_t j = i + 1; j < size; ++j) {
+            if (data[i] > data[j]) {
+                std::swap(data[i], data[j]);
+            }
+        }
+    }
+
+    // Merge sorted chunks
+    std::vector<double> merged(size);
+    size_t chunk_size = 4;
+
+    for (size_t i = 0; i < size; i += chunk_size * 2) {
+        size_t left_end = std::min(i + chunk_size, size);
+        size_t right_end = std::min(i + chunk_size * 2, size);
+
+        std::vector<double> left(data.begin() + i, data.begin() + left_end);
+        std::vector<double> right(data.begin() + left_end, data.begin() + right_end);
+
+        size_t left_idx = 0, right_idx = 0, merged_idx = i;
+
+        // Merge left and right arrays
+        while (left_idx < left.size() && right_idx < right.size()) {
+            if (left[left_idx] <= right[right_idx]) {
+                merged[merged_idx++] = left[left_idx++];
+            } else {
+                merged[merged_idx++] = right[right_idx++];
+            }
+        }
+
+        // Copy remaining elements
+        while (left_idx < left.size()) {
+            merged[merged_idx++] = left[left_idx++];
+        }
+        while (right_idx < right.size()) {
+            merged[merged_idx++] = right[right_idx++];
+        }
+    }
+
+    // Copy merged result back to data
+    data = std::move(merged);
+}
+
+// Function to sort an array of doubles using AVX2
+/*void sort(std::vector<double> data, size_t size) {
+    // Process the vector in chunks of 4
+    for (size_t i = 0; i < size; i += 4) {
+        // Load 4 double values from the array, checking to avoid out-of-bounds
+        __m256d vec = _mm256_loadu_pd(&data[i]);
+        // Sort the vector
+        bitonic_sort(vec);
+        // Store the sorted values back to the array
+        _mm256_storeu_pd(&data[i], vec);
+    }
+}*/
+
+// Function to perform AVX2 bitonic merge on a 4-element vector
+void bitonic_merge_avx2(__m256d& vec, bool ascending) {
+    double temp[4];
+    _mm256_storeu_pd(temp, vec);
+
+    // Perform bitonic merge: compare and swap in pairs
+    if ((temp[0] > temp[1]) == ascending) std::swap(temp[0], temp[1]);
+    if ((temp[2] > temp[3]) == ascending) std::swap(temp[2], temp[3]);
+    if ((temp[0] > temp[2]) == ascending) std::swap(temp[0], temp[2]);
+    if ((temp[1] > temp[3]) == ascending) std::swap(temp[1], temp[3]);
+    if ((temp[1] > temp[2]) == ascending) std::swap(temp[1], temp[2]);
+
+    // Store back sorted values into the vector
+    vec = _mm256_loadu_pd(temp);
+}
+
+// Function to recursively perform bitonic merge over an entire array using AVX2
+void bitonic_merge_recursive(std::vector<double> data, size_t start, size_t length, bool ascending) {
+    if (length <= 4) {
+        // For small chunks of 4 or fewer, use AVX2 directly
+        __m256d vec = _mm256_loadu_pd(&data[start]);
+        bitonic_merge_avx2(vec, ascending);
+        _mm256_storeu_pd(&data[start], vec);
+    } else {
+        size_t half = length / 2;
+        for (size_t i = start; i < start + half; i += 4) {
+            __m256d vec1 = _mm256_loadu_pd(&data[i]);
+            __m256d vec2 = _mm256_loadu_pd(&data[i + half]);
+
+            // Perform min/max comparisons for merging
+            __m256d min_vals = _mm256_min_pd(vec1, vec2);
+            __m256d max_vals = _mm256_max_pd(vec1, vec2);
+
+            // Store in ascending or descending order based on the merge direction
+            if (ascending) {
+                _mm256_storeu_pd(&data[i], min_vals);
+                _mm256_storeu_pd(&data[i + half], max_vals);
+            } else {
+                _mm256_storeu_pd(&data[i], max_vals);
+                _mm256_storeu_pd(&data[i + half], min_vals);
+            }
+        }
+        // Recursively merge the halves
+        bitonic_merge_recursive(data, start, half, ascending);
+        bitonic_merge_recursive(data, start + half, half, ascending);
+    }
+}
+
+// Bitonic sort function using AVX2
+void bitonic_sort_avx2(std::vector<double> data, size_t start, size_t length, bool ascending) {
+    if (length <= 4) {
+        // Base case: if we reach 4 or fewer elements, perform AVX2 bitonic sort directly
+        __m256d vec = _mm256_loadu_pd(&data[start]);
+        bitonic_merge_avx2(vec, ascending);
+        _mm256_storeu_pd(&data[start], vec);
+    } else {
+        size_t half = length / 2;
+        // Sort each half in opposite directions to create a bitonic sequence
+        bitonic_sort_avx2(data, start, half, true);       // Sort the first half in ascending order
+        bitonic_sort_avx2(data, start + half, half, false); // Sort the second half in descending order
+
+        // Merge the entire sequence into a single sorted sequence
+        bitonic_merge_recursive(data, start, length, ascending);
+    }
+}
