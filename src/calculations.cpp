@@ -49,6 +49,48 @@ double getMedian(const std::vector<double>& data) {
     return size % 2 == 0 ? (data[size / 2 - 1] + data[size / 2]) / 2.0 : data[size / 2];
 }
 
+double sumMean(const std::vector<double>& data, const CalcType calcType)
+{
+    switch (calcType) {
+        case Serial:
+            return sumMeanSerial(data);
+            break;
+        case Vectorized:
+            return sumMeanVectorized(data);
+            break;
+        case MultiThreadNonVectorized:
+            return sumMeanMultiThreadNonVectorized(data);
+            break;
+        case ParallelVectorized:
+            return sumMeanParallelVectorized(data);
+            break;
+        default:
+            return sumMeannGPU(data);
+            break;
+    }
+}
+
+double sumVar(const std::vector<double>& data, const double mean, const CalcType calcType)
+{
+    switch (calcType) {
+        case Serial:
+            return sumVarSerial(data, mean);
+            break;
+        case Vectorized:
+            return sumVarVectorized(data, mean);
+            break;
+        case MultiThreadNonVectorized:
+            return sumVarMultiThreadNonVectorized(data, mean);
+            break;
+        case ParallelVectorized:
+            return sumVarParallelVectorized(data, mean);
+            break;
+        default:
+            return sumVarnGPU(data, mean);
+            break;
+    }
+}
+
 double calculateCV(const std::vector<double>& data,const CalcType calcType)
 {
     switch (calcType) {
@@ -75,25 +117,24 @@ double calculateCV(const std::vector<double>& data,const CalcType calcType)
     }
 }
 
-double calculateCVSerial(const std::vector<double>& data)
+double sumMeanSerial(const std::vector<double>& data)
 {
     // Edge case: if data is empty, return 0 or throw an exception
     if (data.empty()) {
         throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
     }
 
-    // Size of input data.
-    const size_t n = data.size();
+    return std::accumulate(data.begin(), data.end(), 0.0);
+}
 
-    double mean = 0.0, variance = 0.0, stddev = 0.0;
-
-    // First we need to get the mean of the input data.
-    mean = calcMean(std::accumulate(data.begin(), data.end(), 0.0), n);
-
-    // If mean is close to zero, return 0 (CV would be very large or undefined)
-    if (std::abs(mean) < ALMOST_ZERO) {
-        return 0.0;
+double sumVarSerial(const std::vector<double>& data, const double mean)
+{
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
     }
+
+    double variance = 0.0;
 
     // Than we need to get the variance from calculated mean and each value.
     for (const auto& value : data) {
@@ -102,17 +143,11 @@ double calculateCVSerial(const std::vector<double>& data)
         // Accumulate the squared differences
         variance += (diff) * (diff);
     }
-    // Finalize variance calculation
-    variance = calcVar(variance, n);
 
-    // Now get the Standard deviation out of variance.
-    stddev = std::sqrt(variance);
-
-    // Return final Coefficient of Variation value in percentage.
-    return calcCV(mean, stddev);
+    return variance;
 }
 
-double calculateCVVectorized(const std::vector<double>& data)
+double calculateCVSerial(const std::vector<double>& data)
 {
     // Edge case: if data is empty, return 0 or throw an exception
     if (data.empty()) {
@@ -123,6 +158,35 @@ double calculateCVVectorized(const std::vector<double>& data)
     size_t n = data.size();
 
     double mean = 0.0, variance = 0.0, stddev = 0.0;
+
+    // First we need to get the mean of the input data.
+    mean = calcMean(sumMeanSerial(data), n);
+
+    // If mean is close to zero, return 0 (CV would be very large or undefined)
+    if (std::abs(mean) < ALMOST_ZERO) {
+        return 0.0;
+    }
+
+    // Finalize variance calculation
+    variance = calcVar(sumVarSerial(data, mean), n);
+
+    // Now get the Standard deviation out of variance.
+    stddev = std::sqrt(variance);
+
+    // Return final Coefficient of Variation value in percentage.
+    return calcCV(mean, stddev);
+}
+
+double sumMeanVectorized(const std::vector<double>& data)
+{
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+
+    // Size of input data.
+    size_t n = data.size();
+
     __m256d sum_vec, var_vec, val, diff;
 
     // Initialling of AVX register for accumulating sum.
@@ -142,12 +206,20 @@ double calculateCVVectorized(const std::vector<double>& data)
     _mm256_store_pd(temp, sum_vec);
 
     // Calculate the rest of mean.
-    mean = calcMean((temp[0] + temp[1] + temp[2] + temp[3]), n);
+    return (temp[0] + temp[1] + temp[2] + temp[3]);
+}
 
-    // If mean is close to zero, return 0 (CV would be very large or undefined)
-    if (std::abs(mean) < ALMOST_ZERO) {
-        return 0.0;
+double sumVarVectorized(const std::vector<double>& data, const double mean)
+{
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
     }
+
+    // Size of input data.
+    size_t n = data.size();
+
+    __m256d sum_vec, var_vec, val, diff;
 
     // Initialling of AVX register for accumulating variance.
     var_vec = _mm256_setzero_pd();
@@ -165,16 +237,70 @@ double calculateCVVectorized(const std::vector<double>& data)
     }
 
     // Extract the sum from the AVX register and add it to result.
+    alignas(32) double temp[4];
+    // Extract the sum from the AVX register and add it to result.
     _mm256_store_pd(temp, var_vec);
 
     // Calculate the rest of mean.
-    variance = calcVar(temp[0] + temp[1] + temp[2] + temp[3], n);
+    return temp[0] + temp[1] + temp[2] + temp[3];
+}
+
+double calculateCVVectorized(const std::vector<double>& data)
+{
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+
+    // Size of input data.
+    size_t n = data.size();
+
+    double mean = 0.0, variance = 0.0, stddev = 0.0;
+
+    // Calculate the rest of mean.
+    mean = calcMean(sumMeanVectorized(data), n);
+
+    // If mean is close to zero, return 0 (CV would be very large or undefined)
+    if (std::abs(mean) < ALMOST_ZERO) {
+        return 0.0;
+    }
+
+    // Calculate the rest of mean.
+    variance = calcVar(sumVarVectorized(data, mean), n);
 
     // Now get the Standard deviation out of variance.
     stddev = std::sqrt(variance);
 
     // Return final Coefficient of Variation value in percentage.
     return calcCV(mean, stddev);
+}
+
+double sumMeanMultiThreadNonVectorized(const std::vector<double>& data)
+{
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+    return std::reduce(std::execution::par, data.begin(), data.end(), 0.0);
+}
+
+double sumVarMultiThreadNonVectorized(const std::vector<double>& data, const double mean)
+{
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+
+    double variance = 0.0;
+
+    // Than we need to get the variance from calculated mean and each value.
+    std::for_each(std::execution::par, data.begin(), data.end(), [&](const double& value) {
+        double diff = value - mean;
+        // Accumulate the squared differences
+        variance = variance + (diff * diff); 
+    });
+
+    return variance;
 }
 
 double calculateCVMultiThreadNonVectorized(const std::vector<double>& data)
@@ -184,94 +310,21 @@ double calculateCVMultiThreadNonVectorized(const std::vector<double>& data)
         throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
     }
 
-    double mean = 0.0, stddev = 0.0;
-    std::atomic<double> variance(0.0);
-
-    // First we need to get the mean of the input data.
-    mean = calcMean(std::reduce(std::execution::par, data.begin(), data.end(), 0.0), data.size());
-    
-    // If mean is close to zero, return 0 (CV would be very large or undefined)
-    if (std::abs(mean) < ALMOST_ZERO) {
-        return 0.0;
-    }
-
-    // Than we need to get the variance from calculated mean and each value.
-    std::for_each(std::execution::par, data.begin(), data.end(), [&](const double& value) {
-        double diff = value - mean;
-        // Accumulate the squared differences
-        variance = variance + (diff * diff); 
-    });
-    // Finalize variance calculation
-    variance = calcVar(variance, data.size());
-
-    // Now get the Standard deviation out of variance.
-    stddev = std::sqrt(variance);
-
-    // Return final Coefficient of Variation value in percentage.
-    return calcCV(mean, stddev);
-}
-
-double calculateCVVectorized_(const std::vector<double>& data) {
-    // Edge case: if data is empty, return 0 or throw an exception
-    if (data.empty()) {
-        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
-    }
-
     // Size of input data.
     size_t n = data.size();
-    
+
     double mean = 0.0, variance = 0.0, stddev = 0.0;
-    __m256d sum_vec = _mm256_setzero_pd();
-    __m256d var_vec = _mm256_setzero_pd();
-    
-    // Parallel computation of sum and variance
-    #pragma omp parallel
-    {
-        // Local sums for each thread
-        __m256d local_sum_vec = _mm256_setzero_pd();
-        __m256d local_var_vec = _mm256_setzero_pd();
 
-        // Perform parallel reduction with AVX
-        #pragma omp for
-        for (size_t i = 0; i < n; i += 4) {
-            // Load 4 double values into an AVX register from the data vector.
-            __m256d val = _mm256_loadu_pd(&data[i]);
-
-            // Accumulate values into local_sum_vec.
-            local_sum_vec = _mm256_add_pd(local_sum_vec, val);
-
-            // Compute the difference from the mean (to be calculated later).
-            __m256d diff = _mm256_sub_pd(val, _mm256_set1_pd(0.0)); // Placeholder for mean
-            // Accumulate into local_var_vec the square of diff.
-            local_var_vec = _mm256_add_pd(local_var_vec, _mm256_mul_pd(diff, diff));
-        }
-
-        // Combine the local sums into the global sum (using critical section)
-        #pragma omp critical
-        {
-            sum_vec = _mm256_add_pd(sum_vec, local_sum_vec);
-            var_vec = _mm256_add_pd(var_vec, local_var_vec);
-        }
-    }
-
-    // Extract the sum from the AVX register and calculate mean
-    double temp[4] alignas(32); // Ensure 32-byte alignment
-    _mm256_store_pd(temp, sum_vec);
-    mean = calcMean(temp[0] + temp[1] + temp[2] + temp[3], n);
+    // Calculate the rest of mean.
+    mean = calcMean(sumMeanMultiThreadNonVectorized(data), n);
 
     // If mean is close to zero, return 0 (CV would be very large or undefined)
     if (std::abs(mean) < ALMOST_ZERO) {
         return 0.0;
     }
 
-    // Now compute variance using the mean
-    // Reset local variance sum since we already accumulated it
-    double var_sum = 0.0;
-    _mm256_store_pd(temp, var_vec);
-    var_sum = temp[0] + temp[1] + temp[2] + temp[3];
-
-    // Calculate variance
-    variance = calcVar(var_sum, n);
+    // Calculate the rest of mean.
+    variance = calcVar(sumVarMultiThreadNonVectorized(data, mean), n);
 
     // Now get the Standard deviation out of variance.
     stddev = std::sqrt(variance);
@@ -280,7 +333,7 @@ double calculateCVVectorized_(const std::vector<double>& data) {
     return calcCV(mean, stddev);
 }
 
-double calculateCVParallelVectorized(const std::vector<double>& data)
+double sumMeanParallelVectorized(const std::vector<double>& data)
 {
     // Edge case: if data is empty, return 0 or throw an exception
     if (data.empty()) {
@@ -290,16 +343,13 @@ double calculateCVParallelVectorized(const std::vector<double>& data)
     // Size of input data.
     const size_t n = data.size();
 
-    double mean = 0.0, variance = 0.0, stddev = 0.0;
-    __m256d sum_vec = _mm256_setzero_pd(), var_vec = _mm256_setzero_pd(), 
-            val, diff, constant_vec, local_sum_vec, local_var_vec;
+    __m256d sum_vec = _mm256_setzero_pd(), val, local_sum_vec;
 
     // Parallel computation of sum
     #pragma omp parallel
     {
         // Local sums for each thread
         local_sum_vec = _mm256_setzero_pd();
-        local_var_vec = _mm256_setzero_pd();
 
         // Perform parallel reduction with AVX
         #pragma omp for
@@ -321,12 +371,21 @@ double calculateCVParallelVectorized(const std::vector<double>& data)
     // Extract the sum from the AVX register and calculate mean
     double temp[4] alignas(32);
     _mm256_store_pd(temp, sum_vec);
-    mean = calcMean(temp[0] + temp[1] + temp[2] + temp[3], n);
+    return temp[0] + temp[1] + temp[2] + temp[3];
+}
 
-    // If mean is close to zero, return 0 (CV would be very large or undefined)
-    if (std::abs(mean) < ALMOST_ZERO) {
-        return 0.0;
+double sumVarParallelVectorized(const std::vector<double>& data, const double mean)
+{
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
     }
+
+    // Size of input data.
+    const size_t n = data.size();
+
+    __m256d var_vec = _mm256_setzero_pd(), 
+            val, diff, constant_vec, local_var_vec;
 
     // Save the mean for parallel computation of variance.
     constant_vec = _mm256_set1_pd(mean);
@@ -356,11 +415,35 @@ double calculateCVParallelVectorized(const std::vector<double>& data)
         }
     }
 
+    // Extract the sum from the AVX register and calculate mean
+    double temp[4] alignas(32);
     // Loading of variance to array.
     _mm256_store_pd(temp, var_vec);
 
+    return temp[0] + temp[1] + temp[2] + temp[3];
+}
+
+double calculateCVParallelVectorized(const std::vector<double>& data)
+{
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+
+    // Size of input data.
+    const size_t n = data.size();
+
+    double mean = 0.0, variance = 0.0, stddev = 0.0;
+    
+    mean = calcMean(sumMeanParallelVectorized(data), n);
+
+    // If mean is close to zero, return 0 (CV would be very large or undefined)
+    if (std::abs(mean) < ALMOST_ZERO) {
+        return 0.0;
+    }
+
     // Calculate variance
-    variance = calcVar(temp[0] + temp[1] + temp[2] + temp[3], n);
+    variance = calcVar(sumVarParallelVectorized(data, mean), n);
 
     // Now get the Standard deviation out of variance.
     stddev = std::sqrt(variance);
@@ -369,9 +452,18 @@ double calculateCVParallelVectorized(const std::vector<double>& data)
     return calcCV(mean, stddev);
 }
 
-double calculateCVOnGPU(std::vector<double> data)
+double sumMeanOnGPU(const std::vector<double>& data)
 {
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+
     const size_t n = data.size();
+    const size_t local_size = 256;   // Work-group size (depends on your device)
+    const size_t global_size = ((n + local_size - 1) / local_size) * local_size; // Round up
+
+    double mean = 0.0;
 
     try {
         // Krok 1: Vyberte OpenCL platformu a zařízení
@@ -388,58 +480,125 @@ double calculateCVOnGPU(std::vector<double> data)
         cl::Program program(context, sources);
         program.build({device});
 
-        // Krok 4: Vytvořte paměťové buffery
-        cl::Buffer buffer_data(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * n, data.data());
-        cl::Buffer buffer_mean(context, CL_MEM_WRITE_ONLY, sizeof(float));
-        cl::Buffer buffer_variance(context, CL_MEM_WRITE_ONLY, sizeof(float) * n);
+        // Step 1: Allocate buffers
+        cl::Buffer buffer_data(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(double) * n, (void*)data.data());
+        cl::Buffer buffer_partial_sum(context, CL_MEM_WRITE_ONLY, sizeof(double) * (global_size / local_size));
+        cl::Buffer buffer_mean(context, CL_MEM_WRITE_ONLY, sizeof(double));
+        cl::Buffer buffer_variance(context, CL_MEM_WRITE_ONLY, sizeof(double) * n);
 
-        // Krok 5: Nastavení kernelu a výpočet průměru
-        cl::Kernel kernel_mean(program, "compute_mean");
-        kernel_mean.setArg(0, buffer_data);
-        kernel_mean.setArg(1, buffer_mean);
-        kernel_mean.setArg(2, static_cast<int>(n));
+        // Step 2: Set up the kernel
+        cl::Kernel kernel(program, "sum_reduction");
+        kernel.setArg(0, buffer_data);
+        kernel.setArg(1, buffer_partial_sum);
+        kernel.setArg(2, static_cast<int>(n));
 
-        queue.enqueueNDRangeKernel(kernel_mean, cl::NullRange, cl::NDRange(n), cl::NullRange);
+        // Step 3: Execute the kernel
+        queue.enqueueNDRangeKernel(kernel, cl::NullRange, cl::NDRange(global_size), cl::NDRange(local_size));
         queue.finish();
 
-        // Získání výsledku průměru
-        float mean;
-        queue.enqueueReadBuffer(buffer_mean, CL_TRUE, 0, sizeof(float), &mean);
+        // Step 4: Retrieve the partial sums from the device
+        std::vector<double> partial_sums(global_size / local_size);
+        queue.enqueueReadBuffer(buffer_partial_sum, CL_TRUE, 0, sizeof(double) * partial_sums.size(), partial_sums.data());
 
-        // Krok 6: Nastavení kernelu a výpočet rozptylu
-        cl::Kernel kernel_variance(program, "compute_variance");
-        kernel_variance.setArg(0, buffer_data);
-        kernel_variance.setArg(1, buffer_mean);
-        kernel_variance.setArg(2, buffer_variance);
-        kernel_variance.setArg(3, static_cast<int>(n));
-
-        queue.enqueueNDRangeKernel(kernel_variance, cl::NullRange, cl::NDRange(n), cl::NullRange);
-        queue.finish();
-
-        // Získání výsledku rozptylu
-        std::vector<float> variance(n);
-        queue.enqueueReadBuffer(buffer_variance, CL_TRUE, 0, sizeof(float) * n, variance.data());
-
-        float total_variance = 0.0f;
-        for (float v : variance) {
-            total_variance += v;
+        // Sum the partial sums on the host to get the final result
+        for (double partial_sum : partial_sums) {
+            mean += partial_sum;
         }
 
-        // Směrodatná odchylka
-        float stddev = std::sqrt(total_variance);
-
-        // Výpočet koeficientu variance
-        float cv = (stddev / mean) * 100.0f;
-
-        std::cout << "Mean: " << mean << std::endl;
-        std::cout << "Standard Deviation: " << stddev << std::endl;
-        std::cout << "Coefficient of Variation (CV): " << cv << "%" << std::endl;
-
+        return mean;
     } catch (const cl::Error& err) {
         std::cerr << "OpenCL error: " << err.what() << "(" << err.err() << ")" << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
     }
+}
+
+double sumVarOnGPU(const std::vector<double>& data, const double mean)
+{
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+
+    const size_t n = data.size();
+    const size_t local_size = 256;   // Work-group size (depends on your device)
+    const size_t global_size = ((n + local_size - 1) / local_size) * local_size; // Round up
+
+    double variance = 0.0f;
+
+    try {
+        // Krok 1: Vyberte OpenCL platformu a zařízení
+        cl::Platform platform = getPlatform();
+        cl::Device device = getDevice(platform);
+
+        // Krok 2: Vytvořte OpenCL kontext a frontu
+        cl::Context context(device);
+        cl::CommandQueue queue(context, device);
+
+        // Krok 3: Načtěte a sestavte kernel
+        std::string kernel_code = loadKernel("../kernels/mykernel.cl");
+        cl::Program::Sources sources(1, std::make_pair(kernel_code.c_str(), kernel_code.length()));
+        cl::Program program(context, sources);
+        program.build({device});
+
+        // Step 1: Allocate buffers
+        cl::Buffer buffer_data(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(double) * n, (void*)data.data());
+        cl::Buffer buffer_partial_sum(context, CL_MEM_WRITE_ONLY, sizeof(double) * (global_size / local_size));
+        cl::Buffer buffer_mean(context, CL_MEM_WRITE_ONLY, sizeof(double));
+        cl::Buffer buffer_variance(context, CL_MEM_WRITE_ONLY, sizeof(double) * n);
+
+        // Step 3: Calculate Variance
+        cl::Kernel kernel_var(program, "compute_variance");
+        kernel_var.setArg(0, buffer_data);
+        kernel_var.setArg(1, mean);
+        kernel_var.setArg(2, buffer_variance);
+        kernel_var.setArg(3, static_cast<int>(n));
+
+        queue.enqueueNDRangeKernel(kernel_var, cl::NullRange, cl::NDRange(global_size), cl::NDRange(local_size));
+        queue.finish();
+
+        // Read partial results for variance
+        std::vector<double> partial_vars(global_size / local_size);
+        queue.enqueueReadBuffer(buffer_variance, CL_TRUE, 0, sizeof(double) * partial_vars.size(), partial_vars.data());
+
+        // Calculate final variance on host
+        variance = std::accumulate(partial_vars.begin(), partial_vars.end(), 0.0);
+
+        return variance;
+    } catch (const cl::Error& err) {
+        std::cerr << "OpenCL error: " << err.what() << "(" << err.err() << ")" << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
+}
+
+double calculateCVOnGPU(std::vector<double> data)
+{
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+
+    // Size of input data.
+    const size_t n = data.size();
+
+    double mean = 0.0, variance = 0.0, stddev = 0.0;
+    
+    mean = calcMean(sumMeanOnGPU(data), n);
+
+    // If mean is close to zero, return 0 (CV would be very large or undefined)
+    if (std::abs(mean) < ALMOST_ZERO) {
+        return 0.0;
+    }
+
+    // Calculate variance
+    variance = calcVar(sumVarOnGPU(data, mean), n);
+
+    // Now get the Standard deviation out of variance.
+    stddev = std::sqrt(variance);
+
+    // Return final Coefficient of Variation value in percentage.
+    return calcCV(mean, stddev);
 }
 
 double calculateMAD(const std::vector<double>& data,const CalcType calcType)
@@ -473,6 +632,36 @@ double calculate_median(std::vector<double> data) {
     return getMedian(data);
 }
 
+std::vector<double> sortDataSerial(const std::vector<double>& data)
+{
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+
+    std::vector<double> sorted(data);
+    std::sort(sorted.begin(), sorted.end());
+
+    return sorted;
+}
+
+std::vector<double> calculateAbsDevSerial(const std::vector<double>& data, const double median)
+{
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+
+    std::vector<double> deviations = {};
+
+    // For each value of input data lets calculate the deviation.
+    for (double value : data) {
+        deviations.push_back(std::fabs(value - median));
+    }
+
+    return sortDataSerial(deviations);
+}
+
 double calculateMADSerial(const std::vector<double>& data)
 {
     // Edge case: if data is empty, return 0 or throw an exception
@@ -481,56 +670,52 @@ double calculateMADSerial(const std::vector<double>& data)
     }
 
     // Initialization of vector for deviations and temp for sorting.
-    std::vector<double> deviations(data.size()), temp(data);
-
-    // Sort input data so we can find the median as the value in the middle.
-    std::sort(temp.begin(), temp.end());
+    std::vector<double> sorted = sortDataSerial(data);
 
     // Get the median from sorted input data.
-    double median = getMedian(temp);
+    double median = getMedian(sorted);
 
-    // For each value of input data lets calculate the deviation.
-    for (double value : temp) {
-        deviations.push_back(std::fabs(value - median));
-    }
-
-    // Sort deviations so we can find the median as the value in the middle.
-    std::sort(deviations.begin(), deviations.end());
+    std::vector<double> deviations = calculateAbsDevSerial(data, median);
 
     // Get the median from sorted deviations.
     return getMedian(deviations);
 }
 
-double calculateMADVectorized(const std::vector<double>& data)
+std::vector<double> sortDataVectorized(const std::vector<double>& data) 
 {
     // Edge case: if data is empty, return 0 or throw an exception
     if (data.empty()) {
         throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
     }
 
-    // Initialization of vector for deviations and temp for sorting.
-    std::vector<double> deviations(data.size()), temp(data);
+    std::vector<double> sortedData(data);
 
-    double median = 0.0;
+    // Sort input data so we can find the median as the value in the middle.
+    std::sort(sortedData.begin(), sortedData.end());
+
+    return sortedData;
+}
+
+std::vector<double> calculateAbsDevVectorized(const std::vector<double>& data, const double median) 
+{ 
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
 
     size_t i = 0;
 
     __m256d sign_mask, vec_data, vec_median, vec_dev;
 
-    /* TODO needs to be vectorized. */
-    // Sort input data so we can find the median as the value in the middle.
-    std::sort(temp.begin(), temp.end());
-
-    // Get the median from sorted input data.
-    median = getMedian(temp);
+    std::vector<double> deviations(data.size());
 
     // Mask for setting abs value in vector (IEEE 754 has the sign bit set).
     sign_mask = _mm256_set1_pd(-0.0);
 
     // Now we process in chunks of 4 doubles (4 64-bit doubles in a 256-bit register).
-    for (; i + 4 <= temp.size(); i += 4) {
+    for(; i + 4 <= data.size(); i += 4) {
         // Load 4 double values into an AVX register from the data vector.
-        vec_data = _mm256_loadu_pd(&temp[i]);
+        vec_data = _mm256_loadu_pd(&data[i]);
 
         // Lets set all four lanes of a 256-bit AVX register vec_median to 
         // the same double-precision floating-point value.
@@ -547,16 +732,68 @@ double calculateMADVectorized(const std::vector<double>& data)
     }
 
     // This loop processes the data vector four doubles at a time (since AVX2 can operate on four doubles at once).
-    for (; i < temp.size(); ++i) {
-        deviations[i] = std::fabs(temp[i] - median);
+    for(; i < data.size(); ++i) {
+        deviations[i] = std::fabs(data[i] - median);
     }
 
-    /* TODO needs to be vectorized. */
-    // Sort deviations so we can find the median as the value in the middle.
-    std::sort(deviations.begin(), deviations.end());
+    return sortDataVectorized(deviations);
+}
+
+double calculateMADVectorized(const std::vector<double>& data)
+{
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+
+    // Initialization of vector for deviations and temp for sorting.
+    std::vector<double> sortedData = sortDataVectorized(data);
+
+    // Get the median from sorted input data.
+    double median = getMedian(sortedData);
+
+    std::vector<double> deviations = calculateAbsDevVectorized(data, median);
+    if (deviations.size() == 0) {
+        throw std::invalid_argument(EMPTY_DEVIATIONS_MESSAGE);
+    }
 
     // Get the median from sorted deviations.
     return getMedian(deviations);
+}
+
+std::vector<double> sortDataMultiThreadNonVectorized(const std::vector<double>& data) 
+{
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+
+    std::vector<double> sortedData(data);
+
+    // Sort input data so we can find the median as the value in the middle.
+    std::sort(sortedData.begin(), sortedData.end());
+
+    return sortedData;
+}
+
+std::vector<double> calculateAbsDevMultiThreadNonVectorized(const std::vector<double>& data, const double median) 
+{ 
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+
+    const size_t n = data.size();
+
+    std::vector<double> deviations(n);
+
+    // For each value of input data lets calculate the deviation.
+    #pragma omp parallel for
+    for (size_t i = 0; i < n; ++i) {
+        deviations[i] = std::fabs(data[i] - median);
+    }
+
+    return sortDataMultiThreadNonVectorized(deviations);
 }
 
 double calculateMADMultiThreadNonVectorized(const std::vector<double>& data)
@@ -567,45 +804,42 @@ double calculateMADMultiThreadNonVectorized(const std::vector<double>& data)
     }
 
     // Initialization of vector for deviations and temp for sorting.
-    std::vector<double> deviations(data.size()), temp(data);
-
-    /* TODO needs to be parallelized. */
-    // Sort input data so we can find the median as the value in the middle.
-    std::sort(temp.begin(), temp.end());
+    std::vector<double> sortedData = sortDataMultiThreadNonVectorized(data);
 
     // Get the median from sorted input data.
-    const double median = getMedian(temp);
+    const double median = getMedian(sortedData);
 
-    // For each value of input data lets calculate the deviation.
-    #pragma omp parallel for
-    for (size_t i = 0; i < data.size(); ++i) {
-        deviations[i] = std::fabs(data[i] - median);
+    std::vector<double> deviations = calculateAbsDevMultiThreadNonVectorized(data, median);
+    if (deviations.size() == 0) {
+        throw std::invalid_argument(EMPTY_DEVIATIONS_MESSAGE);
     }
-
-    /* TODO needs to be parallelized. */
-    // Sort deviations so we can find the median as the value in the middle.
-    std::sort(deviations.begin(), deviations.end());
 
     // Get the median from sorted deviations.
     return getMedian(deviations);
 }
 
-double calculateMADParallelVectorized(const std::vector<double>& data)
-{
+std::vector<double> sortDataParallelVectorized(const std::vector<double>& data) {
     // Edge case: if data is empty, return 0 or throw an exception
     if (data.empty()) {
         throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
     }
-
-    // Initialization of vector for deviations and temp for sorting.
-    std::vector<double> deviations(data.size()), temp(data);
+    
+    std::vector<double> sortedData(data);
 
     // Sort input data so we can find the median as the value in the middle.
-    std::sort(temp.begin(), temp.end());
+    std::sort(sortedData.begin(), sortedData.end());
 
-    // Get the median from sorted input data.
-    double median = getMedian(temp);
+    return sortedData;
+}
 
+std::vector<double> calculateAbsDevParallelVectorized(const std::vector<double>& data, const double median) {
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+    
+    std::vector<double> deviations(data.size());
+    
     __m256d sign_mask = _mm256_set1_pd(-0.0), vec_data, vec_median, vec_dev; // -0.0 in IEEE 754 has the sign bit set
 
     #pragma omp parallel for
@@ -633,49 +867,72 @@ double calculateMADParallelVectorized(const std::vector<double>& data)
         deviations[i] = std::fabs(data[i] - median);
     }
 
-    /* TODO needs to be vectorized. */
-    // Sort deviations so we can find the median as the value in the middle.
-    std::sort(deviations.begin(), deviations.end());
+    return sortDataParallelVectorized(deviations);
+}
+
+double calculateMADParallelVectorized(const std::vector<double>& data)
+{
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+
+    // Initialization of vector for deviations and temp for sorting.
+    std::vector<double> sortedData = sortDataParallelVectorized(data);
+
+    // Get the median from sorted input data.
+    double median = getMedian(sortedData);
+
+    std::vector<double> deviations = calculateAbsDevParallelVectorized(data, median);
+    if (deviations.size() == 0) {
+        throw std::invalid_argument(EMPTY_DEVIATIONS_MESSAGE);
+    }
 
     // Get the median from sorted deviations.
     return getMedian(deviations);
 }
 
-double calculateMADOnGPU(const std::vector<double>& data)
+std::vector<double> sortDataOnGPU(const std::vector<double>& data) 
 {
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+
+    std::vector<double> sortedData(data);
+
+    // Sort input data so we can find the median as the value in the middle.
+    std::sort(sortedData.begin(), sortedData.end());
+
+    return sortedData;
+}
+
+std::vector<double> calculateAbsDevOnGPU(const std::vector<double>& data, const double median) 
+{   
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+
     const size_t n = data.size();
 
+    std::vector<double> deviations(n);
+
     try {
-        // Inicializace OpenCL
-        std::vector<cl::Platform> platforms;
-        cl::Platform::get(&platforms);
-        if (platforms.empty()) {
-            throw std::runtime_error("No OpenCL platforms found.");
-        }
-
-        cl::Platform platform = platforms[0];
-        std::vector<cl::Device> devices;
-        platform.getDevices(CL_DEVICE_TYPE_GPU, &devices);
-        if (devices.empty()) {
-            throw std::runtime_error("No OpenCL devices found.");
-        }
-
-        cl::Device device = devices[0];
+        cl::Platform platform = getPlatform();
+        cl::Device device = getDevice(platform);
         cl::Context context(device);
         cl::CommandQueue queue(context, device);
 
         // Načtení kernelu
-        std::string kernel_code = loadKernel("mykernel.cl");
+        std::string kernel_code = loadKernel("../kernels/mykernel.cl");
         cl::Program::Sources sources(1, std::make_pair(kernel_code.c_str(), kernel_code.size()));
         cl::Program program(context, sources);
         program.build({device});
 
-        // Výpočet mediánu na hostitelském zařízení
-        double median = calculate_median(const_cast<std::vector<double>&>(data));
-
         // Předání dat do GPU
-        cl::Buffer buffer_data(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, data.size() * sizeof(double), (void*)data.data());
-        cl::Buffer buffer_deviations(context, CL_MEM_WRITE_ONLY, data.size() * sizeof(double));
+        cl::Buffer buffer_data(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, n * sizeof(double), (void*)data.data());
+        cl::Buffer buffer_deviations(context, CL_MEM_WRITE_ONLY, n * sizeof(double));
 
         // Inicializace kernelu a nastavení argumentů
         cl::Kernel kernel(program, "calculate_absolute_deviation");
@@ -684,18 +941,38 @@ double calculateMADOnGPU(const std::vector<double>& data)
         kernel.setArg(2, median);
 
         // Spuštění kernelu
-        queue.enqueueNDRangeKernel(kernel, cl::NullRange, cl::NDRange(data.size()), cl::NullRange);
+        queue.enqueueNDRangeKernel(kernel, cl::NullRange, cl::NDRange(n), cl::NullRange);
         queue.finish();
 
         // Načtení výsledků zpět na hostitele
-        std::vector<double> deviations(data.size());
-        queue.enqueueReadBuffer(buffer_deviations, CL_TRUE, 0, data.size() * sizeof(double), deviations.data());
+        queue.enqueueReadBuffer(buffer_deviations, CL_TRUE, 0, n * sizeof(double), deviations.data());
 
-        // Výpočet mediánu z absolutních odchylek
-        return calculate_median(deviations);
+        return sortDataOnGPU(deviations);
 
     } catch (const cl::Error& err) {
         std::cerr << "OpenCL error: " << err.what() << "(" << err.err() << ")" << std::endl;
-        return -1.0;
+        return {};
     }
+}
+
+double calculateMADOnGPU(const std::vector<double>& data)
+{
+    // Edge case: if data is empty, return 0 or throw an exception
+    if (data.empty()) {
+        throw std::invalid_argument(EMPTY_VECTOR_MESSAGE);
+    }
+
+    // Sort input data so we can find the median as the value in the middle.
+    std::vector<double> sortedData = sortDataOnGPU(data);
+
+    // Get the median from sorted input data.
+    double median = getMedian(sortedData);
+
+    std::vector<double> deviations = calculateAbsDevOnGPU(data, median);
+    if (deviations.size() == 0) {
+        throw std::invalid_argument(EMPTY_DEVIATIONS_MESSAGE);
+    }
+
+    // Get the median from sorted deviations.
+    return getMedian(deviations);
 }

@@ -4,7 +4,7 @@
 #include "calculations.h"
 #include "graph_printer.h"
 
-#define NUMBER_OF_VALUES 150000//74380
+#define NUMBER_OF_VALUES 10000//74380
 #define NUMBER_OF_PATIENTS 16
 #define NUMBER_OF_DIMENSIONS 3
 
@@ -13,11 +13,7 @@ const std::vector<std::string> files = {"ACC_001.csv", "ACC_002.csv", "ACC_003.c
 const std::vector<std::string> dimensions = {"x", "y", "z"};
 
 int main() {
-
-    const int N = 1024;
-    std::vector<float> A(N, 1.0f), B(N, 2.0f), C(N);
-
-    CalcType calcType = CalcType::ParallelVectorized;
+    CalcType calcType = CalcType::OnGPU;
 
     // Open a file in write mode
     std::ofstream file("../output/vysledek_" + calcTypeToString(calcType) + ".csv");
@@ -37,8 +33,9 @@ int main() {
     double cv[NUMBER_OF_PATIENTS][NUMBER_OF_DIMENSIONS] = {};
     double mad[NUMBER_OF_PATIENTS][NUMBER_OF_DIMENSIONS] = {};
     
-    for (size_t i = 0; i < NUMBER_OF_PATIENTS; ++i) {
-        file << "Oteviram soubor " << "../data/" + files[i] << std::endl;
+    for (size_t i = 0; i < 1; ++i) {
+        size_t lines = countLines("../data/" + files[i]);
+        file << "Oteviram soubor " << "../data/" + files[i] << "s " << lines << " řádky." << std::endl;
         data[i] = read("../data/" + files[i], NUMBER_OF_VALUES);
 
         if (data[i].size() > 0) {
@@ -63,62 +60,3 @@ int main() {
     
     return 0;
 }
-
-
-// try {
-        // Initialize OpenCL
-        // cl::Platform platform = getPlatform();
-        // cl::Device device = getDevice(platform);
-        // cl::Context context(device);
-        // cl::CommandQueue queue(context, device);
-
-        // // Load kernel
-        // std::string kernelSource = loadKernel("kernels/mykernel.cl");
-        // cl::Program program(context, kernelSource);
-        // program.build({device});
-
-        // Get all platforms and devices
-    //     std::vector<cl::Platform> platforms;
-    //     cl::Platform::get(&platforms);
-    //     cl::Platform platform = platforms.front();
-
-    //     std::vector<cl::Device> devices;
-    //     platform.getDevices(CL_DEVICE_TYPE_GPU, &devices);
-    //     cl::Device device = devices.front();
-
-    //     // Create context and command queue
-    //     cl::Context context(device);
-    //     cl::CommandQueue queue(context, device);
-
-    //     // Create buffers
-    //     cl::Buffer bufferA(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * N, A.data());
-    //     cl::Buffer bufferB(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float) * N, B.data());
-    //     cl::Buffer bufferC(context, CL_MEM_WRITE_ONLY, sizeof(float) * N);
-
-    //     // Build program
-    //     std::string kernelSource = loadKernel("../kernels/mykernel.cl");
-    //     cl::Program program(context, kernelSource);
-    //     program.build({device});
-
-    //     // Set kernel arguments
-    //     cl::Kernel kernel(program, "vector_add");
-    //     kernel.setArg(0, bufferA);
-    //     kernel.setArg(1, bufferB);
-    //     kernel.setArg(2, bufferC);
-
-    //     // Execute the kernel
-    //     queue.enqueueNDRangeKernel(kernel, cl::NullRange, cl::NDRange(N), cl::NullRange);
-    //     queue.enqueueReadBuffer(bufferC, CL_TRUE, 0, sizeof(float) * N, C.data());
-
-    //     // Output results
-    //     std::cout << "First 10 results of vector addition:\n";
-    //     for (int i = 0; i < 10; ++i) {
-    //         std::cout << "C[" << i << "] = " << C[i] << std::endl;
-    //     }
-
-    // } catch (const int &e) {
-    //     std::cerr << "OpenCL error: " << std::endl;
-    // }
-
-    // Setup data (e.g., buffers, kernel arguments) and execute kernel
-    // ...

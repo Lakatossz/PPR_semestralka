@@ -50,20 +50,6 @@ vector<vector<double>> read(const string& file_name, const size_t number_of_line
         }
     }
 
-    // Read each line from the file
-    /*while (getline(file, line)) {
-        // Split the line by delimiter
-        vector<string> columns = split(line, delimiter);
-
-        // Make sure the row has enough columns
-        if (columns.size() > 3) {
-
-            column1_data.push_back(columns[1]);  // Second column (index 0)
-            column2_data.push_back(columns[2]);  // Third column (index 0)
-            column3_data.push_back(columns[3]);  // Fourth column (index 2)
-        }
-    } */
-
     file.close();
 
     vector<vector<double>> columns;
@@ -72,4 +58,23 @@ vector<vector<double>> read(const string& file_name, const size_t number_of_line
     columns.push_back(column3_data);
 
     return columns;
+}
+
+int countLines(const std::string& filename) {
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Could not open the file: " << filename << std::endl;
+        return -1;
+    }
+
+    int lineCount = 0;
+    std::string line;
+
+    // Read each line in the file and increment the count
+    while (std::getline(file, line)) {
+        ++lineCount;
+    }
+
+    file.close();
+    return lineCount;
 }
