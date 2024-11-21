@@ -1,4 +1,4 @@
-#include "../include/basic_math.h"
+#include "../../include/math/basic_math.h"
 
 double calcMean(const double sum, const size_t size)
 {
@@ -24,6 +24,13 @@ void addVariance(double& variance, const double value, const double mean) {
     double diff = value - mean;
     // Accumulate the squared differences
     variance = variance + (diff * diff); 
+}
+
+
+double addVariance(const double value, const double mean) {
+    double diff = value - mean;
+    // Accumulate the squared differences
+    return (diff * diff); 
 }
 
 double getAbs(const double value, const double median) {

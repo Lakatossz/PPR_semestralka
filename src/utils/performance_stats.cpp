@@ -1,4 +1,4 @@
-#include "../include/performance_stats.h"
+#include "../../include/utils/performance_stats.h"
 
 void PerformanceStats::startTimer() {
     startTime = std::chrono::high_resolution_clock::now();
@@ -32,7 +32,16 @@ void PerformanceStats::printSummary(const std::string& calcType) const {
         std::cerr << "Failed to open file: " << STATS_FILE_NAME << std::endl;
     }
 
-    file << calcType << "; ";
-    auto endTime = std::chrono::high_resolution_clock::now();
-    file << std::chrono::duration<double>(endTime - startTime).count() << std::endl;
+    file << "\n" << calcType << "; ";
+
+    for (size_t i = 0; i < durations.size(); ++i) {
+        file << durations[i] << "; ";
+    }
+
+    //auto endTime = std::chrono::high_resolution_clock::now();
+    //file << std::chrono::duration<double>(endTime - startTime).count() << std::endl;
+}
+
+void PerformanceStats::clearTimer() {
+        durations.clear();
 }

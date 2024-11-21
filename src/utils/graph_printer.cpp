@@ -1,4 +1,4 @@
-#include "../include/graph_printer.h"
+#include "../../include/utils/graph_printer.h"
 
 void writeSVG(const std::string& filename) {
     // Create an output file stream

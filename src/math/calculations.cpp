@@ -1,69 +1,73 @@
-#include "../include/calculations.h"
+#include "../../include/math/calculations.h"
 
-double sumMean(const std::vector<double>& data, const CalcType calcType, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data)
+double sumMean(const std::vector<double>& data, const CalcType calcType, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data, PerformanceStats& stat)
 {
+    stat.stopTimer();
     switch (calcType) {
         case Serial:
-            return sumMeanWithPolicy(data, std::execution::seq);
+            return sumMeanWithPolicy(data, std::execution::seq, stat);
             break;
         case Vectorized:
-            return sumMeanVectorized(data);
+            return sumMeanVectorized(data, stat);
             break;
         case MultiThreadNonVectorized:
-            return sumMeanWithPolicy(data, std::execution::par);
+            return sumMeanWithPolicy(data, std::execution::par, stat);
             break;
         case ParallelVectorized:
-            return sumMeanWithPolicy(data, std::execution::par_unseq);
+            return sumMeanWithPolicy(data, std::execution::par_unseq, stat);
             break;
         default:
-            return sumMeanOnGPU(data, queue, program, buffer_data);
+            return sumMeanOnGPU(data, queue, program, buffer_data, stat);
             break;
     }
 }
 
-double sumVar(const std::vector<double>& data, const double mean, const CalcType calcType, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data)
+double sumVar(const std::vector<double>& data, const double mean, const CalcType calcType, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data, PerformanceStats& stat)
 {
+
+    stat.stopTimer();
+
     switch (calcType) {
         case Serial:
-            return sumVarWithPolicy(data, mean, std::execution::seq);
+            return sumVarWithPolicy(data, mean, std::execution::seq, stat);
             break;
         case Vectorized:
-            return sumVarVectorized(data, mean);
+            return sumVarVectorized(data, mean, stat);
             break;
         case MultiThreadNonVectorized:
-            return sumVarWithPolicy(data, mean, std::execution::par);
+            return sumVarWithPolicy(data, mean, std::execution::par, stat);
             break;
         case ParallelVectorized:
-            return sumVarWithPolicy(data, mean, std::execution::par_unseq);
+            return sumVarWithPolicy(data, mean, std::execution::par_unseq, stat);
             break;
         default:
-            return sumVarOnGPU(data, mean, queue, program, buffer_data);
+            return sumVarOnGPU(data, mean, queue, program, buffer_data, stat);
             break;
     }
 }
 
-std::vector<double> calculateAbsDev(const std::vector<double>& data, const double mean, const CalcType calcType, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data)
+std::vector<double> calculateAbsDev(const std::vector<double>& data, const double mean, const CalcType calcType, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data, PerformanceStats& stat)
 {
     switch (calcType) {
         case Serial:
-            return calculateAbsDevWithPolicy(data, mean, std::execution::seq);
+            return calculateAbsDevWithPolicy(data, mean, std::execution::seq, stat);
             break;
         case Vectorized:
-            return calculateAbsDevVectorized(data, mean);
+            return calculateAbsDevVectorized(data, mean, stat);
             break;
         case MultiThreadNonVectorized:
-            return calculateAbsDevWithPolicy(data, mean, std::execution::par);
+            return calculateAbsDevWithPolicy(data, mean, std::execution::par, stat);
             break;
         case ParallelVectorized:
-            return calculateAbsDevWithPolicy(data, mean, std::execution::par_unseq);
+            return calculateAbsDevWithPolicy(data, mean, std::execution::par_unseq, stat);
             break;
         default:
-            return calculateAbsDevOnGPU(data, mean, queue, program, buffer_data);
+            return calculateAbsDevOnGPU(data, mean, queue, program, buffer_data, stat);
             break;
     }
 }
 
-double calculateCV(const std::vector<double>& data,const CalcType calcType, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data)
+double calculateCV(const std::vector<double>& data,const CalcType calcType, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data, PerformanceStats& stat)
 {
     controlDateVector(data);
 
@@ -72,35 +76,43 @@ double calculateCV(const std::vector<double>& data,const CalcType calcType, cl::
 
     double mean = 0.0, variance = 0.0, stddev = 0.0;
 
+    stat.stopTimer();
+
     // First we need to get the mean of the input data.
-    mean = calcMean(sumMean(data, calcType, queue, program, buffer_data), n);
+    mean = calcMean(sumMean(data, calcType, queue, program, buffer_data, stat), n);
 
     // If mean is close to zero, return 0 (CV would be very large or undefined)
     if (std::abs(mean) < ALMOST_ZERO) {
         return 0.0;
     }
 
+    stat.stopTimer();
+
     // Finalize variance calculation
-    variance = calcVar(sumVar(data, mean, calcType, queue, program, buffer_data), n);
+    variance = calcVar(sumVar(data, mean, calcType, queue, program, buffer_data, stat), n);
 
     // Now get the Standard deviation out of variance.
     stddev = std::sqrt(variance);
+
+    stat.stopTimer();
 
     // Return final Coefficient of Variation value in percentage.
     return calcCV(mean, stddev);
 }
 
-double calculateMAD(const std::vector<double>& data,const CalcType calcType, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data)
+double calculateMAD(const std::vector<double>& data,const CalcType calcType, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data, PerformanceStats& stat)
 {
     controlDateVector(data);
 
     // Initialization of vector for deviations and temp for sorting.
-    std::vector<double> sortedData = sortData(data, calcType, queue, program, buffer_data);
+    std::vector<double> sortedData = sortData(data, calcType, queue, program, buffer_data, stat);
 
     // Get the median from sorted input data.
     double median = getMedian(sortedData);
 
-    std::vector<double> deviations = calculateAbsDev(data, median, calcType, queue, program, buffer_data);
+    stat.stopTimer();
+
+    std::vector<double> deviations = calculateAbsDev(data, median, calcType, queue, program, buffer_data, stat);
     if (deviations.size() == 0) {
         throw std::invalid_argument(EMPTY_DEVIATIONS_MESSAGE);
     }
@@ -110,29 +122,90 @@ double calculateMAD(const std::vector<double>& data,const CalcType calcType, cl:
 }
 
 template <typename ExecutionPolicy>
-double sumMeanWithPolicy(const std::vector<double>& data, const ExecutionPolicy policy)
+double sumMeanWithPolicy(const std::vector<double>& data, const ExecutionPolicy policy, PerformanceStats& stat)
 {
     controlDateVector(data);
-    return std::reduce(policy, data.begin(), data.end(), 0.0);
+
+    unsigned int num_threads = std::thread::hardware_concurrency();
+
+    size_t num_chunks = num_threads;
+    size_t chunk_size = data.size() / num_chunks;
+
+    // Vector to store partial sums from each chunk
+    std::vector<double> partial_sums(num_chunks, 0.0);
+
+    // Lambda to compute sum of a chunk
+    auto compute_chunk_sum = [&](size_t start_index, size_t end_index) {
+        return std::reduce(data.begin() + start_index, data.begin() + end_index, 0.0);
+    };
+
+    // Compute partial sums in parallel
+    std::for_each(policy, partial_sums.begin(), partial_sums.end(), [&](double& partial_sum) {
+        size_t chunk_index = &partial_sum - &partial_sums[0]; // Get the index of the current chunk
+        size_t start_index = chunk_index * chunk_size;
+        size_t end_index = (chunk_index == num_chunks - 1) ? data.size() : start_index + chunk_size; 
+
+        partial_sum = compute_chunk_sum(start_index, end_index);
+    });
+
+    // Sum up partial results (this can also be parallelized if necessary)
+    double total_sum = std::reduce(partial_sums.begin(), partial_sums.end(), 0.0);
+
+    stat.stopTimer();
+
+    return total_sum;
 }
 
 template <typename ExecutionPolicy>
-double sumVarWithPolicy(const std::vector<double>& data, const double mean, const ExecutionPolicy policy)
+double sumVarWithPolicy(const std::vector<double>& data, const double mean, const ExecutionPolicy policy, PerformanceStats& stat)
 {
     controlDateVector(data);
-    double variance = 0.0;
 
-    // Than we need to get the variance from calculated mean and each value.
-    std::for_each(policy, data.begin(), data.end(), [&](const double& value) {
-        addVariance(variance, value, mean);
+    unsigned int num_threads = std::thread::hardware_concurrency();
+    size_t num_chunks = num_threads;
+    size_t chunk_size = data.size() / num_chunks;
+
+    // Handle edge case: fewer data points than threads
+    if (chunk_size == 0) {
+        num_chunks = data.size();
+        chunk_size = 1;
+    }
+
+    // Vector to store partial variances
+    std::vector<double> temp_variations(num_chunks, 0.0);
+
+    // Lambda for calculating variance contribution of a single value
+    auto addVariance = [mean](double value) -> double {
+        return (value - mean) * (value - mean);
+    };
+
+    stat.stopTimer();
+
+    // Compute variance in chunks
+    std::for_each(policy, temp_variations.begin(), temp_variations.end(), [&](double& partial_variance) {
+        size_t chunk_index = &partial_variance - &temp_variations[0]; // Get the index of the current chunk
+        size_t start_index = chunk_index * chunk_size;
+        size_t end_index = (chunk_index == num_chunks - 1) ? data.size() : start_index + chunk_size;
+
+        for (size_t i = start_index; i < end_index; ++i) {
+            partial_variance += addVariance(data[i]);
+        }
     });
 
-    return variance;
+    stat.stopTimer();
+
+    // Sum up partial variances to get the total variance
+    double total_variance = std::reduce(temp_variations.begin(), temp_variations.end(), 0.0);
+
+    stat.stopTimer();
+
+    return total_variance;
 }
 
+double getVectorResult(const __m256d var_vec, PerformanceStats& stat) {
 
-double getVectorResult(const __m256d var_vec) {
-    // Extract the sum from the AVX register and add it to result.
+    stat.stopTimer();
+
     alignas(32) double temp[4];
     // Extract the sum from the AVX register and add it to result.
     _mm256_store_pd(temp, var_vec);
@@ -141,7 +214,7 @@ double getVectorResult(const __m256d var_vec) {
     return temp[0] + temp[1] + temp[2] + temp[3];
 }
 
-double sumMeanVectorized(const std::vector<double>& data)
+double sumMeanVectorized(const std::vector<double>& data, PerformanceStats& stat)
 {
     controlDateVector(data);
 
@@ -160,10 +233,12 @@ double sumMeanVectorized(const std::vector<double>& data)
         sum_vec = _mm256_add_pd(sum_vec, val);
     }
 
-    return getVectorResult(sum_vec);
+    stat.stopTimer();
+
+    return getVectorResult(sum_vec, stat);
 }
 
-double sumVarVectorized(const std::vector<double>& data, const double mean)
+double sumVarVectorized(const std::vector<double>& data, const double mean, PerformanceStats& stat)
 {
     controlDateVector(data);
 
@@ -172,6 +247,8 @@ double sumVarVectorized(const std::vector<double>& data, const double mean)
 
     // Initialling of AVX register for accumulating variance.
     __m256d var_vec = _mm256_setzero_pd(), val, diff;
+
+    stat.stopTimer();
 
     // Now we process in chunks of 4 doubles (4 64-bit doubles in a 256-bit register).
     for (size_t i = 0; i < n; i += 4) {
@@ -185,10 +262,12 @@ double sumVarVectorized(const std::vector<double>& data, const double mean)
         var_vec = _mm256_add_pd(var_vec, _mm256_mul_pd(diff, diff));
     }
 
-    return getVectorResult(var_vec);
+    stat.stopTimer();
+
+    return getVectorResult(var_vec, stat);
 }
 
-double sumMeanOnGPU(const std::vector<double>& data, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data)
+double sumMeanOnGPU(const std::vector<double>& data, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data, PerformanceStats& stat)
 {
     controlDateVector(data);
 
@@ -217,6 +296,8 @@ double sumMeanOnGPU(const std::vector<double>& data, cl::CommandQueue &queue, cl
             mean += partial_sum;
         }
 
+        stat.stopTimer();
+
         return mean;
     } catch (const cl::Error& err) {
         std::cerr << "OpenCL error (sumMeanOnGPU): " << err.what() << "(" << err.err() << ")" << std::endl;
@@ -227,7 +308,7 @@ double sumMeanOnGPU(const std::vector<double>& data, cl::CommandQueue &queue, cl
     return 0.0;
 }
 
-double sumVarOnGPU(const std::vector<double>& data, const double mean, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data)
+double sumVarOnGPU(const std::vector<double>& data, const double mean, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data, PerformanceStats& stat)
 {
     controlDateVector(data);
 
@@ -245,6 +326,8 @@ double sumVarOnGPU(const std::vector<double>& data, const double mean, cl::Comma
         cl::Buffer buffer_mean(context, CL_MEM_WRITE_ONLY, sizeof(double));
         cl::Buffer buffer_variance(context, CL_MEM_WRITE_ONLY, sizeof(double) * n);
 
+        stat.stopTimer();
+
         // Step 3: Calculate Variance
         sumVarUsingGPUKernel(queue, program, buffer_data, buffer_variance, mean, global_size, local_size, n);
 
@@ -252,8 +335,12 @@ double sumVarOnGPU(const std::vector<double>& data, const double mean, cl::Comma
         std::vector<double> partial_vars(global_size / local_size);
         queue.enqueueReadBuffer(buffer_variance, CL_TRUE, 0, sizeof(double) * partial_vars.size(), partial_vars.data());
 
+        stat.stopTimer();
+
         // Calculate final variance on host
         variance = std::accumulate(partial_vars.begin(), partial_vars.end(), 0.0);
+
+        stat.stopTimer();
 
         return variance;
     } catch (const cl::Error& err) {
@@ -264,7 +351,7 @@ double sumVarOnGPU(const std::vector<double>& data, const double mean, cl::Comma
     return 0.0;
 }
 
-std::vector<double> calculateAbsDevVectorized(const std::vector<double>& data, const double median) 
+std::vector<double> calculateAbsDevVectorized(const std::vector<double>& data, const double median, PerformanceStats& stat) 
 { 
     controlDateVector(data);
 
@@ -301,24 +388,28 @@ std::vector<double> calculateAbsDevVectorized(const std::vector<double>& data, c
         deviations[i] = getAbs(data[i], median);
     }
 
-    return sortDataVectorized(deviations);
+    stat.stopTimer();
+
+    return sortDataVectorized(deviations, stat);
 }
 
 template <typename ExecutionPolicy>
-std::vector<double> calculateAbsDevWithPolicy(const std::vector<double>& data, const double median, const ExecutionPolicy policy) 
+std::vector<double> calculateAbsDevWithPolicy(const std::vector<double>& data, const double median, const ExecutionPolicy policy, PerformanceStats& stat) 
 {
     controlDateVector(data);
     
     std::vector<double> deviations(data.size());
-    
+
     std::transform(policy, data.begin(), data.end(), deviations.begin(), [&](const double& value) {
         return getAbs(value, median);
         });
 
-    return sortDataParallelVectorized(deviations);
+    stat.stopTimer();
+
+    return sortDataVectorized(deviations, stat);
 }
 
-std::vector<double> calculateAbsDevOnGPU(const std::vector<double>& data, const double median, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data) 
+std::vector<double> calculateAbsDevOnGPU(const std::vector<double>& data, const double median, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data, PerformanceStats& stat) 
 {   
     controlDateVector(data);
 
@@ -333,7 +424,9 @@ std::vector<double> calculateAbsDevOnGPU(const std::vector<double>& data, const 
         calculateAbsoluteDeviationUsingGPUKernel(queue, program, buffer_data, buffer_deviations, median, n);
         queue.enqueueReadBuffer(buffer_deviations, CL_TRUE, 0, n * sizeof(double), deviations.data());
 
-        return sortDataParallelVectorized(deviations);
+        stat.stopTimer();
+
+        return sortDataVectorized(deviations, stat);
         //return sortDataOnGPU(deviations, queue, program, buffer_data);
     } catch (const cl::Error& err) {
         std::cerr << "OpenCL error (calculateAbsDevOnGPU): " << err.what() << "(" << err.err() << ")" << std::endl;

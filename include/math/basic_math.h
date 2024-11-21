@@ -27,4 +27,6 @@ double getMedian(const std::vector<double>& data);
 
 void addVariance(double& variance, const double value, const double mean);
 
+double addVariance(const double value, const double mean);
+
 double getAbs(const double value, const double median);

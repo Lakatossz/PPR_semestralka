@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.14)
 project(PPR_Project)
 
 set(CMAKE_CXX_STANDARD 17)  # Set C++ standard
@@ -11,27 +11,33 @@ find_package(OpenMP REQUIRED)
 # Find OpenCL package
 find_package(OpenCL REQUIRED)
 
+# Find TBB package
+find_package(TBB REQUIRED)
+
 # Include OpenCL headers
-include_directories(${OpenCL_INCLUDE_DIRS} include/)
+include_directories(${OpenCL_INCLUDE_DIRS} include/gpu/)
+
+# Include TBB headers
+include_directories(${TBB_INCLUDE_DIRS})
 
 # Source files
 set(SOURCES
     src/main.cpp
     src/run_initializer.cpp
-    src/kernels.cpp
-    src/utils.cpp
-    src/data_loader.cpp
-    src/calculations.cpp
-    src/graph_printer.cpp
-    src/sort.cpp
-    src/basic_math.cpp
-    src/calc_type.cpp
-    src/sortings.cpp
-    src/performance_stats.cpp
+    src/gpu/kernels.cpp
+    src/gpu/utils.cpp
+    src/utils/data_loader.cpp
+    src/math/calculations.cpp
+    src/utils/graph_printer.cpp
+    src/sort/bitonic_sort.cpp
+    src/math/basic_math.cpp
+    src/math/calc_type.cpp
+    src/sort/sortings.cpp
+    src/utils/performance_stats.cpp
 )
 
 set_source_files_properties(
-    ${CMAKE_INCLUDE_DIR}/cl.h
+    ${CMAKE_INCLUDE_DIR}/gpu/cl.h
     PROPERTIES COMPILE_FLAGS "-w"
 )
 
@@ -48,3 +54,6 @@ target_compile_options(PPR_Project PRIVATE -mavx2 -O3 -fopenmp -march=native)
 
 # Link OpenCL library
 target_link_libraries(PPR_Project PRIVATE ${OpenCL_LIBRARIES})
+
+# Link TBB library
+target_link_libraries(PPR_Project PRIVATE TBB::tbb)

@@ -2,7 +2,7 @@
 
 #define __CL_ENABLE_EXCEPTIONS
 
-#include <cl.hpp>
+#include "cl.hpp"
 #include "kernels.h"
 #include <iostream>
 #include <vector>
@@ -11,13 +11,7 @@
 #include <numeric>
 #include <immintrin.h>
 #include <future>
-#include "kernels.h"
 #include <iostream>
-#include "utils.h"
-#include "data_loader.h"
-#include "graph_printer.h"
-#include "sort.h"
-#include "basic_math.h"
 #include <execution>
 
 cl::Platform getPlatform();

@@ -25,6 +25,8 @@ public:
     // Print summary
     void printSummary(const std::string& calcType) const;
 
+    void clearTimer();
+
 private:
     std::chrono::high_resolution_clock::time_point startTime;
     std::vector<double> durations;       // Time in seconds

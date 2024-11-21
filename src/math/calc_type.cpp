@@ -1,4 +1,4 @@
-#include "../include/calc_type.h"
+#include "../../include/math/calc_type.h"
 
 std::string calcTypeToString(CalcType calcType)
 {

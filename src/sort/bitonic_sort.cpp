@@ -1,4 +1,74 @@
-#include "../include/sort.h"
+#include "../../include/sort/bitonic_sort.h"
+
+void padToPowerOfTwo(std::vector<double>& arr) {
+    size_t originalSize = arr.size();
+    size_t nextPowerOf2 = pow(2, ceil(log2(originalSize)));
+
+    if (originalSize < nextPowerOf2) {
+        arr.resize(nextPowerOf2, std::numeric_limits<double>::max()); // Pad with max value or any other placeholder
+    }
+}
+
+// Helper function to remove padding after sorting
+void removePadding(std::vector<double>& arr, size_t originalSize) {
+    arr.resize(originalSize);
+}
+
+// Helper function to swap elements if needed, depending on the sort order
+inline void bitonicCompare(std::vector<double>& arr, int i, int j, bool ascending) {
+    if (ascending == (arr[i] > arr[j])) {
+        std::swap(arr[i], arr[j]);
+    }
+}
+
+void bitonicMerge(std::vector<double>& arr, int low, int count, bool ascending) {
+    for (int k = count / 2; k > 0; k /= 2) {
+        for (int i = low; i < low + count - k; i++) {
+            if (i + k < low + count) {
+                bitonicCompare(arr, i, i + k, ascending);
+            }
+        }
+    }
+}
+
+// Recursive function to produce a bitonic sequence and sort it
+void bitonicSortRecursive(std::vector<double>& arr, int low, int count, bool ascending) {
+    if (count > 1) {
+        int k = count / 2;
+
+        // Sort in ascending order for the first half
+        bitonicSortRecursive(arr, low, k, true);
+
+        // Sort in descending order for the second half
+        bitonicSortRecursive(arr, low + k, k, false);
+
+        // Merge the whole sequence into a single sorted sequence
+        bitonicMerge(arr, low, count, ascending);
+    }
+}
+
+// Function to initiate bitonic sort
+void bitonicSort(std::vector<double>& arr, bool ascending) {
+    int n = arr.size();
+
+    padToPowerOfTwo(arr);
+
+    for (int size = 2; size <= n; size *= 2) {
+        for (int low = 0; low < n; low += size) {
+            bool direction = (low / size % 2 == 0) ? ascending : !ascending;
+
+            for (int k = size / 2; k > 0; k /= 2) {
+                for (int i = low; i < low + size - k; i++) {
+                    if (i + k < low + size) {
+                        bitonicCompare(arr, i, i + k, direction);
+                    }
+                }
+            }
+        }
+    }
+
+    removePadding(arr, n);
+}
 
 // Function to perform a bitonic sort on a vector of four double values
 void bitonic_sort(__m256d& vec) {

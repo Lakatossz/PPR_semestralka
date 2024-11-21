@@ -1,28 +1,38 @@
-#include "../include/sortings.h"
+#include "../../include/sort/sortings.h"
 
-std::vector<double> sortData(const std::vector<double>& data, const CalcType calcType, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data)
+std::vector<double> sortData(const std::vector<double>& data, const CalcType calcType, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data, PerformanceStats& stat)
 {
+    stat.stopTimer();
+
     switch (calcType) {
-        case Serial:
-            return sortDataWithPolicy(data, std::execution::seq);
+        case Serial: {
+            std::vector<double> sorted = std::vector(data);
+
+            size_t originalSize = sorted.size();
+
+            bitonicSort(sorted, true);
+
+            return sorted;
+            //return sortDataWithPolicy(data, std::execution::seq, stat);
             break;
+        }
         case Vectorized:
-            return sortDataVectorized(data);
+            return sortDataVectorized(data, stat);
             break;
         case MultiThreadNonVectorized:
-            return sortDataWithPolicy(data, std::execution::par);
+            return sortDataWithPolicy(data, std::execution::par, stat);
             break;
         case ParallelVectorized:
-            return sortDataWithPolicy(data, std::execution::par_unseq);
+            return sortDataWithPolicy(data, std::execution::par_unseq, stat);
             break;
         default:
-            return sortDataOnGPU(data, queue, program, buffer_data);
+            return sortDataOnGPU(data, queue, program, buffer_data, stat);
             break;
     }
 }
 
 template <typename ExecutionPolicy>
-std::vector<double> sortDataWithPolicy(const std::vector<double>& data, const ExecutionPolicy policy)
+std::vector<double> sortDataWithPolicy(const std::vector<double>& data, const ExecutionPolicy policy, PerformanceStats& stat)
 {
     std::vector<double> sortedData(data);
     std::sort(policy, sortedData.begin(), sortedData.end());
@@ -30,7 +40,7 @@ std::vector<double> sortDataWithPolicy(const std::vector<double>& data, const Ex
     return sortedData;
 }
 
-std::vector<double> sortDataVectorized(const std::vector<double>& data) 
+std::vector<double> sortDataVectorized(const std::vector<double>& data, PerformanceStats& stat) 
 {
     std::vector<double> sortedData(data);
 
@@ -40,7 +50,7 @@ std::vector<double> sortDataVectorized(const std::vector<double>& data)
     return sortedData;
 }
 
-std::vector<double> sortDataOnGPU(const std::vector<double>& data, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data) 
+std::vector<double> sortDataOnGPU(const std::vector<double>& data, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data, PerformanceStats& stat) 
 {
     const size_t n = data.size();
 
