@@ -30,7 +30,7 @@
 std::vector<double> sortData(const std::vector<double>& data, const CalcType calcType, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data, PerformanceStats& stat);
 
 template <typename ExecutionPolicy>
-std::vector<double> sortDataWithPolicy(const std::vector<double>& data, const ExecutionPolicy policy, PerformanceStats& stat);
+std::vector<double> sortDataWithPolicy(const std::vector<double>& data, ExecutionPolicy policy, PerformanceStats& stats);
 
 std::vector<double> sortDataVectorized(const std::vector<double>& data, PerformanceStats& stat);
 

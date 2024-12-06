@@ -26,13 +26,13 @@ set(SOURCES
     src/run_initializer.cpp
     src/gpu/kernels.cpp
     src/gpu/utils.cpp
+    src/sort/sortings.cpp
     src/utils/data_loader.cpp
     src/math/calculations.cpp
     src/utils/graph_printer.cpp
     src/sort/bitonic_sort.cpp
     src/math/basic_math.cpp
     src/math/calc_type.cpp
-    src/sort/sortings.cpp
     src/utils/performance_stats.cpp
 )
 
@@ -40,6 +40,8 @@ set_source_files_properties(
     ${CMAKE_INCLUDE_DIR}/gpu/cl.h
     PROPERTIES COMPILE_FLAGS "-w"
 )
+
+add_compile_definitions(CL_TARGET_OPENCL_VERSION=120) # Adjust the version as needed
 
 # Add the executable
 add_executable(PPR_Project ${SOURCES})

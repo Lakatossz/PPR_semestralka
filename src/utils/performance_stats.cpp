@@ -4,10 +4,13 @@ void PerformanceStats::startTimer() {
     startTime = std::chrono::high_resolution_clock::now();
 }
 
-void PerformanceStats::stopTimer() {
+void PerformanceStats::stopTimer(const std::string checkPointName) {
     auto endTime = std::chrono::high_resolution_clock::now();
     double duration = std::chrono::duration<double>(endTime - startTime).count();
-    durations.push_back(duration);
+    checkPoint c = {};
+    c.checkPointDuration = duration;
+    c.checkPointName = checkPointName;
+    durations.push_back(c);
 }
 
 void PerformanceStats::printHeadSummary() const {
@@ -25,7 +28,7 @@ void PerformanceStats::printHeadSummary() const {
 }
 
 // Print summary
-void PerformanceStats::printSummary(const std::string& calcType) const {
+void PerformanceStats::printSummary(const std::string& calcType, const bool sLabelem) const {
 
     std::ofstream file(STATS_FILE_NAME, std::ios::app);
     if (!file.is_open()) {
@@ -35,13 +38,23 @@ void PerformanceStats::printSummary(const std::string& calcType) const {
     file << "\n" << calcType << "; ";
 
     for (size_t i = 0; i < durations.size(); ++i) {
-        file << durations[i] << "; ";
+        if (sLabelem) {
+            file << durations[i].checkPointDuration << " (" << durations[i].checkPointName << "); ";
+        } else {
+            file << durations[i].checkPointDuration << "; ";
+        }
     }
-
-    //auto endTime = std::chrono::high_resolution_clock::now();
-    //file << std::chrono::duration<double>(endTime - startTime).count() << std::endl;
 }
 
 void PerformanceStats::clearTimer() {
-        durations.clear();
+    durations.clear();
+}
+
+void PerformanceStats::clearFile() {
+    std::ofstream file(STATS_FILE_NAME, std::ios::out | std::ios::trunc); // Open in truncate mode
+    if (file) {
+        file.close(); // Close the file after truncating
+    } else {
+        std::cerr << "Error: Could not open file " << STATS_FILE_NAME << std::endl;
+    }
 }

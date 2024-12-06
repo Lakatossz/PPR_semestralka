@@ -6,7 +6,10 @@
 #include <vector>
 #include <cmath>
 #include <limits>
-#include <omp.h>
+#include <execution>
+#include <tbb/tbb.h>
+#include <future>  // Add this line at the top
+#include <algorithm>
 
 void padToPowerOfTwo(std::vector<double>& arr);
 
@@ -15,6 +18,8 @@ void removePadding(std::vector<double>& arr, size_t originalSize);
 
 // Helper function to swap elements if needed, depending on the sort order
 void bitonicCompare(std::vector<double>& arr, int i, int j, bool ascending);
+
+void processChunk(std::vector<double>& arr, int low, int count, int step, bool ascending);
 
 // The main bitonic merge function
 void bitonicMerge(std::vector<double>& arr, int low, int count, bool ascending);

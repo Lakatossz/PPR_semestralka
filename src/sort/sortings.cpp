@@ -32,11 +32,12 @@ std::vector<double> sortData(const std::vector<double>& data, const CalcType cal
 }
 
 template <typename ExecutionPolicy>
-std::vector<double> sortDataWithPolicy(const std::vector<double>& data, const ExecutionPolicy policy, PerformanceStats& stat)
+std::vector<double> sortDataWithPolicy(const std::vector<double>& data, ExecutionPolicy policy, PerformanceStats& stat) 
 {
     std::vector<double> sortedData(data);
     std::sort(policy, sortedData.begin(), sortedData.end());
 
+    stat.stopTimer();
     return sortedData;
 }
 

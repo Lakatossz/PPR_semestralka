@@ -406,7 +406,7 @@ std::vector<double> calculateAbsDevWithPolicy(const std::vector<double>& data, c
 
     stat.stopTimer();
 
-    return sortDataVectorized(deviations, stat);
+    return sortDataWithPolicy(deviations, policy, stat);
 }
 
 std::vector<double> calculateAbsDevOnGPU(const std::vector<double>& data, const double median, cl::CommandQueue &queue, cl::Program &program, cl::Buffer &buffer_data, PerformanceStats& stat) 

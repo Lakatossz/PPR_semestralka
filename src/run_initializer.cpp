@@ -10,7 +10,7 @@ int initialize_run() {
         CalcType::Vectorized, 
         CalcType::MultiThreadNonVectorized, 
         CalcType::ParallelVectorized, 
-        CalcType::OnGPU
+        CalcType::Vectorized
     };
 
     for (auto& calcType : calcTypeArray) {
@@ -39,7 +39,11 @@ int initialize_run() {
     double cv[NUMBER_OF_PATIENTS][NUMBER_OF_DIMENSIONS] = {};
     double mad[NUMBER_OF_PATIENTS][NUMBER_OF_DIMENSIONS] = {};
 
-    for (size_t file_index = 0; file_index < files.size() / 2; ++file_index) {
+    size_t patients = DEBUG_MODE == 1 ? DEBUG_NUMBER_OF_PATIENTS : files.size();
+
+    stats[0].clearFile();
+
+    for (size_t file_index = 0; file_index < patients; ++file_index) {
         size_t lines = DEBUG_MODE == 1 ? DEBUG_NUMBER_OF_VALUES : countLines(DATA_FOLDER_NAME + files[file_index]);
         std::cout << "Oteviram soubor " << DATA_FOLDER_NAME + files[file_index] << " s " << lines << " řádky." << std::endl;
         data = read(DATA_FOLDER_NAME + files[file_index], lines);

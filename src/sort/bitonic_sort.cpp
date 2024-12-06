@@ -17,18 +17,42 @@ void removePadding(std::vector<double>& arr, size_t originalSize) {
 // Helper function to swap elements if needed, depending on the sort order
 inline void bitonicCompare(std::vector<double>& arr, int i, int j, bool ascending) {
     if (ascending == (arr[i] > arr[j])) {
+        std::cout << arr[i] << " " << arr[j] << std::endl;
         std::swap(arr[i], arr[j]);
     }
 }
 
-void bitonicMerge(std::vector<double>& arr, int low, int count, bool ascending) {
-    for (int k = count / 2; k > 0; k /= 2) {
-        for (int i = low; i < low + count - k; i++) {
-            if (i + k < low + count) {
-                bitonicCompare(arr, i, i + k, ascending);
-            }
+
+// Function to process one "merge chunk"
+void processChunk(std::vector<double>& arr, int low, int count, int step, bool ascending) {
+    for (int i = low; i < low + count - step; i++) {
+        std::cout << (i + step) << " < " << (low + count) << std::endl;
+        if (i + step < low + count) {
+            bitonicCompare(arr, i, i + step, ascending);
         }
     }
+}
+
+// Main merge function with chunked processing
+void bitonicMerge(std::vector<double>& arr, int low, int count, bool ascending) {
+    unsigned int num_threads = std::thread::hardware_concurrency();  // Get available threads
+    size_t num_chunks = num_threads;  // Divide into chunks based on available threads
+    size_t chunk_size = count / num_chunks;
+
+    // Create a range to iterate over the chunks
+    std::vector<size_t> chunk_indices(num_chunks);
+    std::iota(chunk_indices.begin(), chunk_indices.end(), 0);  // Fill with 0, 1, ..., num_chunks-1
+
+    // Iterate over chunks, using std::for_each to process them in parallel
+    std::for_each(std::execution::seq, chunk_indices.begin(), chunk_indices.end(), 
+        [&arr, low, chunk_size, ascending, count, num_chunks](size_t i) {
+            size_t chunk_start = low + i * chunk_size;
+            size_t chunk_end = (i == num_chunks - 1) ? (low + count) : (chunk_start + chunk_size);
+
+            for (int step = chunk_size / 2; step > 0; step /= 2) {
+                processChunk(arr, chunk_start, chunk_end - chunk_start, step, ascending);
+            }
+        });
 }
 
 // Recursive function to produce a bitonic sequence and sort it
@@ -36,13 +60,11 @@ void bitonicSortRecursive(std::vector<double>& arr, int low, int count, bool asc
     if (count > 1) {
         int k = count / 2;
 
-        // Sort in ascending order for the first half
+        // Create ascending and descending subsequences
         bitonicSortRecursive(arr, low, k, true);
-
-        // Sort in descending order for the second half
         bitonicSortRecursive(arr, low + k, k, false);
 
-        // Merge the whole sequence into a single sorted sequence
+        // Merge the sequences
         bitonicMerge(arr, low, count, ascending);
     }
 }
@@ -53,19 +75,8 @@ void bitonicSort(std::vector<double>& arr, bool ascending) {
 
     padToPowerOfTwo(arr);
 
-    for (int size = 2; size <= n; size *= 2) {
-        for (int low = 0; low < n; low += size) {
-            bool direction = (low / size % 2 == 0) ? ascending : !ascending;
-
-            for (int k = size / 2; k > 0; k /= 2) {
-                for (int i = low; i < low + size - k; i++) {
-                    if (i + k < low + size) {
-                        bitonicCompare(arr, i, i + k, direction);
-                    }
-                }
-            }
-        }
-    }
+    // Perform the recursive sort
+    bitonicSortRecursive(arr, 0, n, ascending);
 
     removePadding(arr, n);
 }

@@ -22,7 +22,6 @@
 #include <execution>
 #include "calc_type.h"
 #include "../sort/sortings.h"
-#include <execution>
 #include <tbb/tbb.h>
 
 #define EMPTY_VECTOR_MESSAGE "Data vector is empty"
